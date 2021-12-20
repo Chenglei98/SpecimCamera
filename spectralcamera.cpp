@@ -1,11 +1,15 @@
 ﻿#include "spectralcamera.h"
 
-SI_U8 *send_buf1 = nullptr;
-SI_U8 *send_buf2 = nullptr;
-QSemaphore emptybuff(2);                   //空缓冲区信号量
+float* send_buf1 = nullptr;
+float* send_buf2 = nullptr;
+
+float* merge = nullptr;
+
+QSemaphore emptybuff(200);                   //空缓冲区信号量
 QSemaphore fullbuff(0);                    //正在处理的缓冲区信号量
 bool is_first_buf = true;
-SI_64 buf_size = 0;
+
+int band_count = 40;
 
 SpectralCamera* camera;
 
@@ -13,6 +17,31 @@ int onDataCallback(SI_U8* buffer, SI_64 frame_size, SI_64 frame_number, void* us
 
 SpectralCamera::SpectralCamera()
 {
+
+}
+
+SpectralCamera::~SpectralCamera()
+{
+    delete [] send_buf1;
+    delete [] send_buf2;
+    delete [] merge;
+    delete [] white_buf;  //校正白帧
+    delete [] black_buf;  //校正黑帧
+    delete [] temp_calibration_buf;
+}
+
+void SpectralCamera::load_param(camera_parameter *para)
+{
+    memcpy(mode, para->mode, sizeof(mode));  //模式设置
+    memset(para->mode, 0, sizeof(para->mode));
+    exposure_time = para->exposure_time / 1000.0;  //曝光时间设置
+    frame_rate = para->frame_rate;   //帧率设置
+    gain = para->gain;  //增益设置
+    offset_x = para->offset_x;    //offset设置
+    image_width = para->image_width;  //宽度设置
+    memset(bands, 0, 128);
+    std::copy(para->band.begin(), para->band.end(), bands);  //波段设置
+    para->band.clear();
 
 }
 
@@ -54,7 +83,10 @@ void SpectralCamera::init_camera()
         qDebug() << "====== init camera failed ======";
         return;
     }
-    config_camera();
+//    config_camera();
+    SI_SetBool(device, L"Camera.MROI.Enable", false);
+    SI_SetString(device, L"Camera.MROI.MultibandString", const_cast<SI_WC*>(bands));
+    SI_SetBool(device, L"Camera.MROI.Enable", true);
     get_image_info();
 
     register_data_callback();
@@ -63,6 +95,10 @@ void SpectralCamera::init_camera()
 void SpectralCamera::config_camera()
 {
     SI_64 res = 0;
+
+    //设置触发模式
+    res = SI_SetEnumIndexByString(device, L"Camera.Trigger.Mode", const_cast<SI_WC*>(mode));
+    if(res) qDebug() << "set trigger mode failed, error code: " << res;
 
     //曝光时间
     res = SI_SetFloat(device, L"Camera.ExposureTime", exposure_time);
@@ -73,19 +109,18 @@ void SpectralCamera::config_camera()
     if(res) qDebug() << "set frame rate failed, error code: " << res;
 
     //设置采样波段
-    res = SI_SetBool(device, L"Camera.MROI.Enable", false);
+    /*res = SI_SetBool(device, L"Camera.MROI.Enable", false);
     res = SI_SetString(device, L"Camera.MROI.MultibandString", const_cast<SI_WC*>(bands));
     if(res) qDebug() << "set MROI failed, error code: " << res;
     res = SI_SetBool(device, L"Camera.MROI.Enable", true);
 
-    qDebug() << "fdsfsdf" << SI_SetEnumIndex(device, L"Camera.Gain.Digital", 2);
+    qDebug() << SI_SetEnumIndex(device, L"Camera.Gain.Digital", 0);
+    if(res) qDebug() << "set gain failed, error code: " << res;*/
 
 
-    //设置触发模式
-//    res = SI_SetEnumIndexByString(device, L"Camera.Trigger.Mode", const_cast<SI_WC*>(mode));
-//    if(res) qDebug() << "set trigger mode failed, error code: " << res;
 }
 
+//此函数计算bands_size和MROI数据大小，所以必须执行
 void SpectralCamera::get_image_info()
 {
     SI_64 height = 0;
@@ -115,17 +150,22 @@ void SpectralCamera::get_image_info()
     wprintf(L"%s\n", sFeature);
     }*/
 
+    std::wcout << "mode selected: " << mode << std::endl;
+    qDebug() << "img_w:" << width << " | img_h:" << height;
+    qDebug() << "img_sizebytes:" << bytes << " | nBitDepth:" << bit_depth << " | framesize:" << frame_size;
+    qDebug() << "exposure time:" << exposure_time << "ms | frame rate:" << frame_rate;
+    qDebug() << "band_size:" << BANDSIZE;
+    std::wcout << "band selected: " << bands << std::endl;
 
-    bands_size = frame_size / 2048;
-    buf_size = image_width * bands_size * 2;
+    send_buf1 = new float[MUL_FRAME];
+    send_buf2 = new float[MUL_FRAME];
 
-    send_buf1 = new SI_U8[buf_size];
-    send_buf2 = new SI_U8[buf_size];
+    white_buf = new uint16_t[SINGLE_FRAME];
+    black_buf = new uint16_t[SINGLE_FRAME];
+    temp_calibration_buf = new uint32_t[SINGLE_FRAME];
 
-    qDebug() << "img_w:" << width << " img_h:" << height;
-    qDebug() << "img_sizebytes:" << bytes << " nBitDepth:" << bit_depth << " framesize:" << frame_size;
-    qDebug() << "exposure time:" << exposure_time << "ms frame rate:" << frame_rate;
-    qDebug() << "bands size:" << bands_size << "buf_size:" << buf_size;
+    merge = new float[MUL_FRAME];
+
 }
 
 void SpectralCamera::register_data_callback()
@@ -157,6 +197,10 @@ void SpectralCamera::close_camera()
     SI_Unload();
 }
 
+
+static int count = 0;
+
+
 int onDataCallback(SI_U8* buffer, SI_64 frame_size, SI_64 frame_number, void* userdata)
 {
     /* 打印帧号，帧大小 */
@@ -165,56 +209,82 @@ int onDataCallback(SI_U8* buffer, SI_64 frame_size, SI_64 frame_number, void* us
         qDebug() << "frame: " << frame_number;
         qDebug() << "frame_size: " << frame_size;
     }
-    if(!emptybuff.tryAcquire())      //申请空缓冲区
+
+    //采集黑帧
+    if(camera->capture_black_flag || camera->capture_white_flag)
     {
-        qDebug()<<"====== loss ======";
-        return -1;
-    }
-    if(is_first_buf == true)
-    {
-        is_first_buf = false;
-        SI_U8* temp = new SI_U8[buf_size];     //取ROI后的buff
-        SI_U8* head = temp;
-        memset(temp, 0, buf_size);
-        for(int i = 0; i < camera->bands_size; i++)
+        if(count != CALIBRATION_FRAMES)
         {
-            memcpy(temp, buffer + camera->offset_x * 2, camera->image_width * 2);
-            temp = temp + camera->image_width * 2;
-            buffer = buffer + 1024 * 2;
+            for(int i=0; i<SINGLE_FRAME; i++)
+            {
+                camera->temp_calibration_buf[i] += buffer[i];
+            }
+            count++;
+            return 0;
         }
-        memcpy(send_buf1, head, buf_size);
-        qDebug() <<"aaaaa";
-        delete[] head;
-        fullbuff.release();
-    }
-    else
-    {
-        is_first_buf = true;
-        SI_U8* temp = new SI_U8[buf_size];
-        SI_U8* head = temp;
-        memset(temp, 0, buf_size);
-        for(int i = 0; i < camera->bands_size; i++)
+        else
         {
-            memcpy(temp, buffer + camera->offset_x * 2, camera->image_width * 2);
-            temp = temp + camera->image_width * 2;
-            buffer = buffer + 1024 * 2;
+            //采集到CALIBRATION_FRAMES帧
+            camera->stop_acquisition();
+            if(camera->capture_black_flag)
+            {
+                camera->capture_black_flag = false;
+                for(int i=0; i<SINGLE_FRAME; i++)
+                {
+                    camera->black_buf[i] = camera->temp_calibration_buf[i] / CALIBRATION_FRAMES;
+                }
+            }
+            else if(camera->capture_white_flag)
+            {
+                camera->capture_white_flag = false;
+                for(int i=0; i<SINGLE_FRAME; i++)
+                {
+                    camera->white_buf[i] = camera->temp_calibration_buf[i] / CALIBRATION_FRAMES;
+                }
+            }
+            count = 0;
+            return 0;
         }
-        memcpy(send_buf2, head, buf_size);
-        delete[] head;
-        fullbuff.release();
     }
-//        if(is_first_buf == true)
-//        {
-//            is_first_buf = false;
-//            memcpy(send_buf1, buffer, frame_size);
-//            fullbuff.release();
-//        }
-//        else
-//        {
-//            is_first_buf = true;
-//            memcpy(send_buf2, buffer, frame_size);
-//            fullbuff.release();
-//        }
+
+    float* temp = new float[SINGLE_FRAME];
+    uint16_t* buff_16 = (uint16_t*) buffer;
+
+    if(count != REALHEIGHT)
+    {
+        for(int i=0; i<SINGLE_FRAME; i++)
+        {
+            temp[i] = (float)(buff_16[i] - camera->black_buf[i]) / (camera->white_buf[i] - camera->black_buf[i]);
+        }
+        memcpy(merge + count*SINGLE_FRAME*sizeof(float), temp, count*SINGLE_FRAME*sizeof(float));
+        count++;
+
+        delete [] temp;
+
+        return 0;
+    }
+    else if(count == REALHEIGHT)
+    {
+        count = 0;
+        if(!emptybuff.tryAcquire())      //申请空缓冲区
+        {
+            qDebug()<<"====== loss ======";
+            return -1;
+        }
+
+        if(is_first_buf == true)
+        {
+            is_first_buf = false;
+            memcpy(send_buf1, merge, MUL_FRAME*sizeof(float)); //改大小
+            fullbuff.release();
+        }
+        else
+        {
+            is_first_buf = true;
+            memcpy(send_buf2, merge, MUL_FRAME*sizeof(float));
+            fullbuff.release();
+        }
+    }
     return 0;
 }
 

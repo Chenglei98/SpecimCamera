@@ -30,6 +30,13 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 
 LIBS += -L"C:/Program Files (x86)/Specim/SDKs/SpecSensor/2020_519/bin/x64" -lSpecSensor
+LIBS += -L"D:/Opencv-3.4.12/opencv/build/x64/vc15/lib" -lopencv_world3412
 
 INCLUDEPATH += $$PWD/include
 DEPENDPATH += $$PWD/include
+
+
+INCLUDEPATH += D:/Opencv-3.4.12/opencv/build/include \
+               D:/Opencv-3.4.12/opencv/build/include/opencv \
+               D:/Opencv-3.4.12/opencv/build/include/opencv2
+

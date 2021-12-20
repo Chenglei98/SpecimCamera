@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE QtCreatorProject>
-<!-- Written by QtCreator 4.12.2, 2021-12-20T22:22:44. -->
+<!-- Written by QtCreator 4.12.2, 2021-12-18T12:03:40. -->
 <qtcreator>
  <data>
   <variable>EnvironmentId</variable>
@@ -308,8 +308,9 @@
     </valuelist>
     <value type="int" key="PE.EnvironmentAspect.Base">2</value>
     <valuelist type="QVariantList" key="PE.EnvironmentAspect.Changes"/>
-    <value type="QString" key="ProjectExplorer.ProjectConfiguration.Id">Qt4ProjectManager.Qt4RunConfiguration:C:/Users/72784/Documents/duyan/tobacco_program/spectralcamera_12_18_final/spectralcamera_12_16.pro</value>
-    <value type="QString" key="ProjectExplorer.RunConfiguration.BuildKey">C:/Users/72784/Documents/duyan/tobacco_program/spectralcamera_12_18_final/spectralcamera_12_16.pro</value>
+    <value type="QString" key="ProjectExplorer.ProjectConfiguration.DisplayName">spectralcamera_12_162</value>
+    <value type="QString" key="ProjectExplorer.ProjectConfiguration.Id">Qt4ProjectManager.Qt4RunConfiguration:C:/Users/72784/Documents/duyan/tobacco_program/NANTONGtiaoshi/spectralcamera_12_17/spectralcamera_12_16.pro</value>
+    <value type="QString" key="ProjectExplorer.RunConfiguration.BuildKey">C:/Users/72784/Documents/duyan/tobacco_program/NANTONGtiaoshi/spectralcamera_12_17/spectralcamera_12_16.pro</value>
     <value type="QString" key="RunConfiguration.Arguments"></value>
     <value type="bool" key="RunConfiguration.Arguments.multi">false</value>
     <value type="QString" key="RunConfiguration.OverrideDebuggerStartup"></value>

@@ -4,17 +4,17 @@
 #include <QTcpSocket>
 #include <Windows.h>
 
-extern SI_U8 *send_buf1;
-extern SI_U8 *send_buf2;
+extern float* send_buf1;
+extern float* send_buf2;
 extern QSemaphore emptybuff;                   //空缓冲区信号量
 extern QSemaphore fullbuff;                    //正在处理的缓冲区信号量
 extern bool is_first_buf;
-extern SI_64 buf_size;
 
 QSemaphore start_signal(0);  //开始采图并发送信号量
-bool start_flag = false;
 
 extern SpectralCamera* camera;
+
+camera_parameter CAMERA_PARAMETER;
 
 void protocal_analysis(char* data, int data_size)
 {
@@ -26,7 +26,7 @@ void protocal_analysis(char* data, int data_size)
 
     //对数据进行解析
 //  qDebug() << "go into1";
-    if(data_size > 10)
+    if(data_size > 1024)
     {
 //            qDebug() << "go into2";
         if((uint8_t)data[0] == 0xAA && (uint8_t)data[1] == 0xBB &&
@@ -34,65 +34,93 @@ void protocal_analysis(char* data, int data_size)
         {
             if((uint8_t)data[2] == 0x00)
             {
-                qDebug() << "Internal";
+                memcpy(CAMERA_PARAMETER.mode, INTERNAL, sizeof(INTERNAL));
+                qDebug() << "*** TriggerMode seted: <Internal> ***";
             }
             else if((uint8_t)data[2] == 0x01)
             {
-                qDebug() << "External";
+                memcpy(CAMERA_PARAMETER.mode, EXTERNAL, sizeof(EXTERNAL));
+                qDebug() << "*** TriggerMode seted: <External> ***";
             }
             uint16_t temp = (uint8_t)data[3] << 8 | (uint8_t)data[4];
-            qDebug() << "exposure time:" <<temp;
+            CAMERA_PARAMETER.exposure_time = temp;
+            qDebug() << "*** Exposure Time seted: <" << temp << "> ***";
             temp = 0;
             temp = (uint8_t)data[5] << 8 | (uint8_t)data[6];
-            qDebug() << "frame rate:" <<temp;
-            int gain = 0;
+            CAMERA_PARAMETER.frame_rate = temp;
+            qDebug() << "*** Frame Rate seted: <" << temp << "> ***";
             if((uint8_t)data[7] == 0x00)
             {
-                gain = 0;
+                CAMERA_PARAMETER.gain = 0;
+                qDebug() << "*** Gain seted: <" << CAMERA_PARAMETER.gain << "> ***";
             }
             else if((uint8_t)data[7] == 0x01)
             {
-                gain = 1;
+                CAMERA_PARAMETER.gain = 1;
+                qDebug() << "*** Gain seted: <" << CAMERA_PARAMETER.gain << "> ***";
             }
             else if((uint8_t)data[7] == 0x02)
             {
-                gain = 2;
+                CAMERA_PARAMETER.gain = 2;
+                qDebug() << "*** Gain seted: <" << CAMERA_PARAMETER.gain << "> ***";
             }
-            qDebug() << "gain:" <<gain;
+            else if((uint8_t)data[7] == 0x03)
+            {
+                CAMERA_PARAMETER.gain = 3;
+                qDebug() << "*** Gain seted: <" << CAMERA_PARAMETER.gain << "> ***";
+            }
             temp = 0;
             temp = (uint8_t)data[8] << 8 | (uint8_t)data[9];
-            qDebug() << "offset_x:" <<temp;
+            CAMERA_PARAMETER.offset_x = temp;
+            qDebug() << "*** Offset_x seted: <" << temp << "> ***";
             temp = 0;
             temp = (uint8_t)data[10] << 8 | (uint8_t)data[11];
-            qDebug() << "width:" <<temp;
+            CAMERA_PARAMETER.image_width = temp;
+            qDebug() << "*** Width seted: <" << temp << "> ***";
             temp = 0;
             int i = 12;
             while(i != data_size - 2)
             {
                 temp = 0;
                 temp = (uint8_t)data[i] << 8 | (uint8_t)data[i+1];
-                qDebug() << temp;
+                qDebug() << "*** Band Selected: <" << temp << "> ***";
+                CAMERA_PARAMETER.band = CAMERA_PARAMETER.band + std::to_wstring(temp)
+                                        + L" " + std::to_wstring(1);
+                if(i != data_size - 4)
+                    CAMERA_PARAMETER.band += L";";
                 i += 2;
+                //赋值完记得清空
             }
+            camera->load_param(&CAMERA_PARAMETER);
+            camera->config_camera();
+            camera->get_image_info();
         }
     }
     else if(data_size == 5)
     {
-        qDebug() << "aaaaaaaaaaaaaaaaaa";
         if(strcmp(data, "start") == 0)
         {
+
+            qDebug() << "***** start *****";
+
+            /* 申请处理使用的缓冲区，确保为0 */
+            int n = fullbuff.available();
+            if(n > 0)
+                fullbuff.acquire(n);
+            n = emptybuff.available();
+            if(n < 2)
+                emptybuff.release(2 - n);
             start_signal.release();
-            qDebug() << "start>>>>>>>>";
+
         }
 
     }
     else if(data_size == 4)
     {
-        qDebug() << "bbbbbbbbbbbbb";
         if(strcmp(data, "stop") == 0)
         {
-            start_flag = false;
-            qDebug() << "stop>>>>>>>>";
+            camera->stop_acquisition();
+            qDebug() << "***** stop *****";
         }
     }
     return;
@@ -103,15 +131,21 @@ int main(int argc, char *argv[])
 {
 //    QCoreApplication a(argc, argv);
 
+    char rec_buf[128];
+    int rec_size = 0;
+
     /* 初始化相机 */
     camera = new SpectralCamera();
     camera->init_camera();
 
+
     /* 启动服务端 */
+
     bool is_timeout;
     QTcpServer* server = new QTcpServer();
     QTcpSocket* client_socket = new QTcpSocket();
     server->listen(QHostAddress::Any, 13542);  //监听
+    qDebug() << "====== waiting for connection ======";
     server->waitForNewConnection(30000, &is_timeout);
     if(is_timeout)
     {
@@ -120,24 +154,9 @@ int main(int argc, char *argv[])
     }
     client_socket = server->nextPendingConnection();
     qDebug() << "====== connect success! ======";
+    qDebug() << "====== waiting for signal... ======";
 
-    /* 申请处理使用的缓冲区，确保为0 */
-    int n = fullbuff.available();
-    if(n > 0)
-        fullbuff.acquire(n);
-
-    qDebug() << ">>>>>>>";
-
-    /* 开始采集 */
-//    camera->start_acquisition();
-
-    char rec_buf[128];
-    int rec_size = 0;
-//    bool flag = true;
-
-//    FILE* fp = fopen("./roi", "wb");
-
-//    第一层while，判断配置参数的发送和开始信号的发送
+  //第一层while，判断配置参数的发送和开始信号的发送
     while(1)
     {
         rec_size = 0;
@@ -145,14 +164,16 @@ int main(int argc, char *argv[])
         rec_size = client_socket->read(rec_buf, sizeof(rec_buf));
         if(rec_size > 0)
         {
+            qDebug() << "RECEIVE SIGNAL";
             protocal_analysis(rec_buf, rec_size);
             memset(rec_buf, 0, sizeof(rec_buf));
         }
 
     //第二层while，监测停止信号的发送；图像数据传递客户端
-
         if(!start_signal.tryAcquire())
             continue;
+
+        camera->start_acquisition();
 
         while(1)
         {
@@ -162,7 +183,7 @@ int main(int argc, char *argv[])
             if(rec_size == 4 && !strcmp(rec_buf, "stop"))
             {
                 camera->stop_acquisition();
-                qDebug() << "stop acquisition!";
+                qDebug() << "***** stop *****";
                 memset(rec_buf, 0, sizeof(rec_buf));
                 break;
             }
@@ -176,18 +197,22 @@ int main(int argc, char *argv[])
             if(is_first_buf)
             {
                 //发送缓冲区2
-                client_socket->write((const char*)send_buf2, buf_size);
+                client_socket->write((const char*)send_buf2, MUL_FRAME*sizeof(float));
                 client_socket->flush();
                 emptybuff.release();
+                qDebug() << "send buf1";
             }
             else
             {
                 //发送缓冲区1
-                client_socket->write((const char*)send_buf1, buf_size);
+                client_socket->write((const char*)send_buf1, MUL_FRAME*sizeof(float));
                 client_socket->flush();
                 emptybuff.release();
+                qDebug() << "send buf2";
             }
+
         }
+
     }
 
     return 0;
