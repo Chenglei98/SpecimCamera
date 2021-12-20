@@ -111,7 +111,12 @@ void protocal_analysis(char* data, int data_size)
             if(n < 2)
                 emptybuff.release(2 - n);
             start_signal.release();
+<<<<<<< HEAD
 
+=======
+            camera->start_acquisition();
+            qDebug() << "***** start *****";
+>>>>>>> a956b5f7e075439800b2c39cfca05df65e86fbcd
         }
 
     }
@@ -140,13 +145,21 @@ int main(int argc, char *argv[])
 
 
     /* 启动服务端 */
+<<<<<<< HEAD
 
+=======
+#if 1
+>>>>>>> a956b5f7e075439800b2c39cfca05df65e86fbcd
     bool is_timeout;
     QTcpServer* server = new QTcpServer();
     QTcpSocket* client_socket = new QTcpSocket();
     server->listen(QHostAddress::Any, 13542);  //监听
     qDebug() << "====== waiting for connection ======";
+<<<<<<< HEAD
     server->waitForNewConnection(30000, &is_timeout);
+=======
+    server->waitForNewConnection(10000, &is_timeout);
+>>>>>>> a956b5f7e075439800b2c39cfca05df65e86fbcd
     if(is_timeout)
     {
         qDebug() << "++++++connect timeout!++++++";
@@ -155,8 +168,18 @@ int main(int argc, char *argv[])
     client_socket = server->nextPendingConnection();
     qDebug() << "====== connect success! ======";
     qDebug() << "====== waiting for signal... ======";
+<<<<<<< HEAD
 
   //第一层while，判断配置参数的发送和开始信号的发送
+=======
+
+
+    /* 申请处理使用的缓冲区，确保为0 */
+    int n = fullbuff.available();
+    if(n > 0)
+        fullbuff.acquire(n);
+//  第一层while，判断配置参数的发送和开始信号的发送
+>>>>>>> a956b5f7e075439800b2c39cfca05df65e86fbcd
     while(1)
     {
         rec_size = 0;
@@ -164,14 +187,30 @@ int main(int argc, char *argv[])
         rec_size = client_socket->read(rec_buf, sizeof(rec_buf));
         if(rec_size > 0)
         {
+<<<<<<< HEAD
             qDebug() << "RECEIVE SIGNAL";
             protocal_analysis(rec_buf, rec_size);
+=======
+//            qDebug() << "aaaaaaaaaaaaaa";
+//            protocal_analysis(rec_buf, rec_size);
+>>>>>>> a956b5f7e075439800b2c39cfca05df65e86fbcd
             memset(rec_buf, 0, sizeof(rec_buf));
         }
 
     //第二层while，监测停止信号的发送；图像数据传递客户端
+<<<<<<< HEAD
         if(!start_signal.tryAcquire())
             continue;
+=======
+//        if(!start_signal.tryAcquire())
+//            continue;
+#endif
+        camera->start_acquisition();
+        while(1)
+        {
+            ;
+        }
+>>>>>>> a956b5f7e075439800b2c39cfca05df65e86fbcd
 
         camera->start_acquisition();
 

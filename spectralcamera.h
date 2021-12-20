@@ -9,6 +9,7 @@
 #include <QThread>
 #include <QSemaphore>
 #include <iostream>
+<<<<<<< HEAD
 #include "opencv.hpp"
 
 #define LICENSE_PATH L"C:/Program Files (x86)/Specim/SDKs/SpecSensor/SpecSensor SDK.lic"
@@ -31,12 +32,22 @@
 
 #define SINGLE_FRAME (REALWIDTH * BANDSIZE)
 #define MUL_FRAME (SINGLE_FRAME * REALHEIGHT)
+=======
+
+#define LICENSE_PATH L"C:/Program Files (x86)/Specim/SDKs/SpecSensor/SpecSensor SDK.lic"
+#define CAMERA_INDEX 2    //相机索引,通过枚举选择FX10e with Pleora
+#define BAND_SELECTED L"100 3"  //光谱谱段选择，"x1 x2"表示:从x1开始到x1+x2共x2个波段
+#define RAW_WIDTH 1024
+>>>>>>> a956b5f7e075439800b2c39cfca05df65e86fbcd
 
 //参数配置宏定义
 #define EXTERNAL L"External"
 #define INTERNAL L"Internal"
+<<<<<<< HEAD
 
 
+=======
+>>>>>>> a956b5f7e075439800b2c39cfca05df65e86fbcd
 
 typedef struct
 {
@@ -56,7 +67,10 @@ class SpectralCamera
     friend int onDataCallback(SI_U8* buffer, SI_64 frame_size, SI_64 frame_number, void* userdata);
 public:
     SpectralCamera();
+<<<<<<< HEAD
     ~SpectralCamera();
+=======
+>>>>>>> a956b5f7e075439800b2c39cfca05df65e86fbcd
     void load_param(camera_parameter* para);       //*************还没有写
     void enum_camera();      //枚举相机并打印相机信息
     void init_camera();
@@ -75,7 +89,14 @@ private:
     SI_H device = 0;
     bool is_show = true;   //是否显示枚举信息
 
+<<<<<<< HEAD
     /* 相机配置参数  强烈建议通过软件设置或者配置文件设置*/
+=======
+
+    /*相机配置参数*/
+
+
+>>>>>>> a956b5f7e075439800b2c39cfca05df65e86fbcd
     double exposure_time = 0.6;  //曝光时间 ms
     double frame_rate = 10;     //帧率
     SI_WC bands[128] = BAND_SELECTED;  //代表300~300+100波段范围，详情见SDK P251
@@ -84,6 +105,7 @@ private:
     int offset_x = 0;
     SI_64 image_width = 1024;   //图像宽度
     int bands_size;
+    std::vector<int> bandss = {100, 200, 300};
 
     uint16_t* white_buf;  //校正白帧
     uint16_t* black_buf;  //校正黑帧
